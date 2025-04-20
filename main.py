@@ -9,7 +9,7 @@ from app.s3_cli import (
     set_object_access_policy, create_bucket_policy,
     read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
     set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version,
-    collecting_objects, upload_to_folder, delete_old_files, basic_file_upload
+    collecting_objects, upload_to_folder, delete_old_files, basic_file_upload, download_webpage_source
 )
 
 app = typer.Typer()
@@ -247,6 +247,76 @@ def create_static_website_cmd(bucket_name: str, file_name: str):
     except ClientError as e:
         typer.echo(f"Error configuring website: {e}")
         raise typer.Exit(1)
+
+
+@app.command()
+def create_webpage_from_url_cmd(bucket_name: str, source_url: str):
+    """
+    Creates a static website from a URL source
+
+    Args:
+        bucket_name: Name of the S3 bucket to create
+        source_url: URL of the webpage to copy
+    """
+    client = init_client()
+
+    content, tmp_file = download_webpage_source(source_url)
+    if not content or not tmp_file:
+        typer.echo("Failed to download webpage")
+        raise typer.Exit(1)
+
+    try:
+        if not create_bucket(client, bucket_name):
+            typer.echo("Failed to create bucket")
+            raise typer.Exit(1)
+
+        website_configuration = {
+            'ErrorDocument': {'Key': 'error.html'},
+            'IndexDocument': {'Suffix': 'index.html'},
+        }
+
+        client.delete_public_access_block(Bucket=bucket_name)
+
+        client.put_bucket_website(
+            Bucket=bucket_name,
+            WebsiteConfiguration=website_configuration
+        )
+
+        client.put_bucket_policy(
+            Bucket=bucket_name,
+            Policy=generate_public_read_policy(bucket_name)
+        )
+
+        if basic_file_upload(bucket_name, tmp_file, client):
+            client.copy_object(
+                Bucket=bucket_name,
+                CopySource={'Bucket': bucket_name, 'Key': os.path.basename(tmp_file)},
+                Key='index.html',
+            )
+            client.delete_object(
+                Bucket=bucket_name,
+                Key=os.path.basename(tmp_file)
+            )
+            with open(tmp_file, 'rb') as file:
+                client.put_object(
+                    Bucket=bucket_name,
+                    Key='index.html',
+                    Body=file,
+                    ContentType='text/html'
+                )
+
+            typer.echo(f"Successfully created website from {source_url}")
+            typer.echo(f"Website URL: http://{bucket_name}.s3-website-{client.meta.region_name}.amazonaws.com")
+        else:
+            typer.echo("Failed to upload webpage content")
+
+    except ClientError as e:
+        typer.echo(f"Error configuring website: {e}")
+        raise typer.Exit(1)
+    finally:
+        if os.path.exists(tmp_file):
+            os.unlink(tmp_file)
+
 
 if __name__ == "__main__":
     app()

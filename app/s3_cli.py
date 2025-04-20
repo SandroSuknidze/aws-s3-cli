@@ -1,3 +1,4 @@
+import tempfile
 from datetime import datetime, timedelta
 
 from collections import defaultdict
@@ -6,6 +7,7 @@ import boto3
 from os import getenv
 
 import magic
+import requests
 import typer
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
@@ -419,6 +421,7 @@ def upload_to_folder(bucket_name, file_path, aws_s3_client):
     else:
         typer.echo("Upload failed")
 
+
 def delete_old_files(bucket_name, aws_s3_client, file_name):
     versions = list_file_versions(aws_s3_client, bucket_name, file_name)
     if versions:
@@ -435,6 +438,7 @@ def delete_old_files(bucket_name, aws_s3_client, file_name):
                 except ClientError as e:
                     typer.echo(f"Error deleting version {version['VersionId']}: {e}")
 
+
 def basic_file_upload(bucket_name, file_path, aws_s3_client):
     try:
         key = os.path.basename(file_path)
@@ -447,3 +451,16 @@ def basic_file_upload(bucket_name, file_path, aws_s3_client):
     except ClientError as e:
         print(f"Error uploading file: {e}")
         return False
+
+
+def download_webpage_source(url: str) -> tuple[None, None] | tuple[str, str]:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
+            tmp_file.write(response.content)
+            return response.content.decode('utf-8'), tmp_file.name
+    except requests.RequestException as e:
+        print(f"Error downloading webpage: {e}")
+        return None, None
