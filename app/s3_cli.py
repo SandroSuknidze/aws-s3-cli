@@ -43,12 +43,16 @@ def list_buckets(aws_s3_client):
         return False
 
 
-def create_bucket(aws_s3_client, bucket_name,
-                  region="us-west-2"):
+def create_bucket(aws_s3_client, bucket_name, region="us-east-1"):
     try:
-        location = {'LocationConstraint': region}
-        response = aws_s3_client.create_bucket(
-            Bucket=bucket_name, CreateBucketConfiguration=location)
+        if region == "us-east-1":
+            response = aws_s3_client.create_bucket(Bucket=bucket_name)
+        else:
+            location = {'LocationConstraint': region}
+            response = aws_s3_client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration=location
+            )
     except ClientError as e:
         print(e)
         return False
@@ -431,3 +435,15 @@ def delete_old_files(bucket_name, aws_s3_client, file_name):
                 except ClientError as e:
                     typer.echo(f"Error deleting version {version['VersionId']}: {e}")
 
+def basic_file_upload(bucket_name, file_path, aws_s3_client):
+    try:
+        key = os.path.basename(file_path)
+        aws_s3_client.upload_file(
+            Filename=file_path,
+            Bucket=bucket_name,
+            Key=key,
+        )
+        return True
+    except ClientError as e:
+        print(f"Error uploading file: {e}")
+        return False
