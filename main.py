@@ -1,5 +1,8 @@
+import json
 import os
+from typing import Optional
 
+import requests
 import typer
 from botocore.exceptions import ClientError
 
@@ -316,6 +319,59 @@ def create_webpage_from_url_cmd(bucket_name: str, source_url: str):
     finally:
         if os.path.exists(tmp_file):
             os.unlink(tmp_file)
+
+
+@app.command()
+def inspire_cmd(
+        author: Optional[str] = typer.Option(None, help="Get quote from specific author"),
+        bucket_name: Optional[str] = typer.Option(None, help="S3 bucket name to save quote"),
+):
+    """
+    Get inspiring quotes from the API. Optionally filter by author and save to S3.
+    """
+    try:
+        quote_url = f"https://api.quotable.kurokeita.dev/api/quotes/random?author={author}"
+        quote_response = requests.get(quote_url)
+        quote_response.raise_for_status()
+        quote_data = quote_response.json()
+
+        if not quote_data['quote']:
+            typer.echo(f"No author found matching '{author}'")
+            raise typer.Exit(1)
+
+        formatted_quote = f"\"{quote_data['quote']['content']}\"\n- {author}"
+        typer.echo(formatted_quote)
+
+        if not bucket_name:
+            typer.echo("Error: bucket_name is required when using --save")
+            raise typer.Exit(1)
+
+        client = init_client()
+
+        quote_json = {
+            "quote": quote_data['quote']['content'],
+            "author": quote_data['quote']['author'],
+            "tags": quote_data['quote']['tags'],
+            "id": quote_data['quote']['id']
+        }
+
+        filename = f"quote_{quote_data['quote']['id']}.json"
+
+        try:
+            client.put_object(
+                Bucket=bucket_name,
+                Key=filename,
+                Body=json.dumps(quote_json, indent=2),
+                ContentType='application/json'
+            )
+            typer.echo(f"\nQuote saved to s3://{bucket_name}/{filename}")
+        except ClientError as e:
+            typer.echo(f"Error saving to S3: {e}")
+            raise typer.Exit(1)
+
+    except requests.RequestException as e:
+        typer.echo(f"Error fetching quote: {e}")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
