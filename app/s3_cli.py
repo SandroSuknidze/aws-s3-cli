@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import boto3
 from os import getenv
 from dotenv import load_dotenv
@@ -359,6 +361,7 @@ def restore_file_version(aws_s3_client, bucket_name, file_name, version_id):
 
 
 def collecting_objects(bucket_name, aws_s3_client):
+    extension_counts = defaultdict(int)
     response = aws_s3_client.list_objects_v2(Bucket=bucket_name)
 
     try:
@@ -366,6 +369,7 @@ def collecting_objects(bucket_name, aws_s3_client):
             for obj in response['Contents']:
                 file_name = obj['Key']
                 extension = file_name.split('.')[-1] if '.' in file_name else ''
+                extension_counts[extension] += 1
 
                 aws_s3_client.copy_object(
                     Bucket=bucket_name,
@@ -380,4 +384,6 @@ def collecting_objects(bucket_name, aws_s3_client):
     except ClientError as e:
         print(e)
         return False
+    for ext, count in extension_counts.items():
+        print(f"{ext}: {count} files")
     return True
