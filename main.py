@@ -6,7 +6,7 @@ from app.s3_cli import (
     bucket_exists, download_file_and_upload_to_s3,
     set_object_access_policy, create_bucket_policy,
     read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
-    set_lifecycle_policy, delete_file
+    set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version
 )
 
 app = typer.Typer()
@@ -24,7 +24,10 @@ def list_commands():
         "set-object-access-policy-cmd      - Set access policy for an object",
         "create-bucket-policy-cmd          - Create bucket policy",
         "read-bucket-policy-cmd            - Read bucket policy",
-        "list-commands           - Show this list of commands"
+        "list-commands           - Show this list of commands",
+        "get-bucket-versioning-cmd    - Check if bucket versioning is enabled",
+        "list-file-versions-cmd      - List all versions of a specific file",
+        "restore-version-cmd         - Restore a previous version as the lates"
     ]
 
     typer.echo("Available commands:")
@@ -98,7 +101,6 @@ def read_bucket_policy_cmd(bucket_name: str):
 
 @app.command()
 def upload_file_cmd(bucket_name: str, file_path: str, key: str = None, validate_mime: bool = False):
-    """Upload a file to S3. Automatically chooses between small and large file upload methods."""
     client = init_client()
 
     if validate_mime and not validate_mime_type(file_path):
@@ -118,7 +120,6 @@ def upload_file_cmd(bucket_name: str, file_path: str, key: str = None, validate_
 
 @app.command()
 def set_lifecycle_cmd(bucket_name: str, prefix: str = "", days: int = 120):
-    """Set lifecycle policy to delete objects after specified days"""
     client = init_client()
     result = set_lifecycle_policy(client, bucket_name, prefix, days)
     typer.echo(f"Lifecycle policy {'set successfully' if result else 'failed to set'}")
@@ -127,7 +128,6 @@ def set_lifecycle_cmd(bucket_name: str, prefix: str = "", days: int = 120):
 @app.command()
 def delete_file_cmd(bucket_name: str, file_key: str,
                    delete: bool = typer.Option(False, "--del", help="Flag to confirm deletion")):
-    """Delete a file from S3"""
     if not delete:
         typer.echo("Please provide --del flag to confirm deletion")
         raise typer.Exit(1)
@@ -138,6 +138,37 @@ def delete_file_cmd(bucket_name: str, file_key: str,
     else:
         typer.echo(f"Failed to delete {file_key}")
         raise typer.Exit(1)
+
+@app.command()
+def get_bucket_versioning_cmd(bucket_name: str):
+    client = init_client()
+    is_enabled = get_bucket_versioning(client, bucket_name)
+    typer.echo(f"Versioning for bucket {bucket_name}: {'Enabled' if is_enabled else 'Disabled'}")
+
+@app.command()
+def list_file_versions_cmd(bucket_name: str, file_name: str):
+    client = init_client()
+    versions = list_file_versions(client, bucket_name, file_name)
+    if versions:
+        typer.echo(f"\nVersions of {file_name} in {bucket_name}:")
+        for version in versions:
+            typer.echo(f"Version ID: {version['VersionId']}")
+            typer.echo(f"Last Modified: {version['LastModified']}")
+            typer.echo(f"Is Latest: {version['IsLatest']}")
+            typer.echo("---")
+        typer.echo(f"\nTotal versions: {len(versions)}")
+    else:
+        typer.echo(f"No versions found for {file_name}")
+
+
+@app.command()
+def restore_version_cmd(bucket_name: str, file_name: str, version_id: str):
+    client = init_client()
+    success = restore_file_version(client, bucket_name, file_name, version_id)
+    if success:
+        typer.echo(f"Successfully restored version {version_id} of {file_name}")
+    else:
+        typer.echo("Failed to restore version")
 
 
 if __name__ == "__main__":

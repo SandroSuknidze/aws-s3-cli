@@ -299,3 +299,53 @@ def delete_file(aws_s3_client, bucket_name, file_key):
     except ClientError as e:
         print(f"Error deleting file: {e}")
         return False
+
+def get_bucket_versioning(aws_s3_client, bucket_name):
+    """Get bucket versioning status"""
+    try:
+        response = aws_s3_client.get_bucket_versioning(Bucket=bucket_name)
+        status = response.get('Status', 'Disabled')
+        return status == 'Enabled'
+    except ClientError as e:
+        print(f"Error getting bucket versioning: {e}")
+        return False
+
+def list_file_versions(aws_s3_client, bucket_name, file_name):
+    """List all versions of a specific file"""
+    try:
+        response = aws_s3_client.list_object_versions(
+            Bucket=bucket_name,
+            Prefix=file_name
+        )
+        versions = []
+        if 'Versions' in response:
+            for version in response['Versions']:
+                if version['Key'] == file_name:
+                    versions.append({
+                        'VersionId': version['VersionId'],
+                        'LastModified': version['LastModified'],
+                        'IsLatest': version['IsLatest']
+                    })
+        return versions
+    except ClientError as e:
+        print(f"Error listing file versions: {e}")
+        return []
+
+def restore_file_version(aws_s3_client, bucket_name, file_name, version_id):
+    """Restore a specific version of a file as the latest version"""
+    try:
+        # Copy the old version to the same location, which creates a new version
+        copy_source = {
+            'Bucket': bucket_name,
+            'Key': file_name,
+            'VersionId': version_id
+        }
+        aws_s3_client.copy_object(
+            CopySource=copy_source,
+            Bucket=bucket_name,
+            Key=file_name
+        )
+        return True
+    except ClientError as e:
+        print(f"Error restoring file version: {e}")
+        return False
