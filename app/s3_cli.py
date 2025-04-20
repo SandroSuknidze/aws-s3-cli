@@ -2,6 +2,9 @@ from collections import defaultdict
 
 import boto3
 from os import getenv
+
+import magic
+import typer
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 import json
@@ -387,3 +390,25 @@ def collecting_objects(bucket_name, aws_s3_client):
     for ext, count in extension_counts.items():
         print(f"{ext}: {count} files")
     return True
+
+
+def upload_to_folder(bucket_name, file_path, aws_s3_client):
+    mime = magic.Magic(mime=True)
+    file_type = mime.from_file(file_path)
+
+    main_type = file_type.split('/')[0]
+    file_name = os.path.basename(file_path)
+    key = f"{main_type}/{file_name}"
+
+    file_size = os.path.getsize(file_path)
+    if file_size >= 100 * 1024 * 1024:  # 100MB
+        typer.echo("Using multipart upload for large file...")
+        result = upload_large_file(aws_s3_client, bucket_name, file_path, key)
+    else:
+        typer.echo("Using simple upload for small file...")
+        result = upload_small_file(aws_s3_client, bucket_name, file_path, key)
+
+    if result:
+        typer.echo(f"Successfully uploaded {file_path} to {bucket_name}/{key}")
+    else:
+        typer.echo("Upload failed")

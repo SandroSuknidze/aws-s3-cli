@@ -7,7 +7,7 @@ from app.s3_cli import (
     set_object_access_policy, create_bucket_policy,
     read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
     set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version,
-    collecting_objects
+    collecting_objects, upload_to_folder
 )
 
 app = typer.Typer()
@@ -189,6 +189,21 @@ def collecting_objects_cmd(bucket_name: str,
     else:
         typer.echo(f"Failed to collect objects from {bucket_name}")
         raise typer.Exit(1)
+
+
+@app.command()
+def upload_to_folder_cmd(
+        bucket_name: str,
+        file_path: str,
+):
+    client = init_client()
+
+    result = upload_to_folder(bucket_name, file_path, client)
+
+    if result:
+        typer.echo(f"Successfully uploaded {file_path} to {bucket_name}")
+    else:
+        typer.echo("Upload failed")
 
 
 if __name__ == "__main__":
