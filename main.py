@@ -1,9 +1,12 @@
+import os
+
 import typer
 from app.s3_cli import (
     init_client, list_buckets, create_bucket, delete_bucket,
     bucket_exists, download_file_and_upload_to_s3,
     set_object_access_policy, create_bucket_policy,
-    read_bucket_policy, generate_public_read_policy
+    read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
+    set_lifecycle_policy
 )
 
 app = typer.Typer()
@@ -82,6 +85,32 @@ def read_bucket_policy_cm(bucket_name: str):
     result = read_bucket_policy(client, bucket_name)
     if not result:
         typer.echo(f"Failed to read policy for bucket: {bucket_name}")
+
+@app.command()
+def upload_file_cm(bucket_name: str, file_path: str, key: str = None, validate_mime: bool = False):
+    """Upload a file to S3. Automatically chooses between small and large file upload methods."""
+    client = init_client()
+    
+    if validate_mime and not validate_mime_type(file_path):
+        typer.echo("Error: Invalid file type")
+        return
+    
+    file_size = os.path.getsize(file_path)
+    if file_size >= 100 * 1024 * 1024:  # 100MB
+        typer.echo("Using multipart upload for large file...")
+        result = upload_large_file(client, bucket_name, file_path, key)
+    else:
+        typer.echo("Using simple upload for small file...")
+        result = upload_small_file(client, bucket_name, file_path, key)
+    
+    typer.echo(f"Upload {'successful' if result else 'failed'}")
+
+@app.command()
+def set_lifecycle_cm(bucket_name: str, prefix: str = "", days: int = 120):
+    """Set lifecycle policy to delete objects after specified days"""
+    client = init_client()
+    result = set_lifecycle_policy(client, bucket_name, prefix, days)
+    typer.echo(f"Lifecycle policy {'set successfully' if result else 'failed to set'}")
 
 if __name__ == "__main__":
     app()

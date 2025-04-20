@@ -1,9 +1,15 @@
-
 import boto3
 from os import getenv
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 import json
+
+# Add these imports at the top
+import mimetypes
+import math
+import os
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 load_dotenv()
 
@@ -138,3 +144,146 @@ def read_bucket_policy(aws_s3_client, bucket_name):
     except ClientError as e:
         print(e)
         return False
+
+def upload_small_file(aws_s3_client, bucket_name, file_path, key=None):
+    """
+    Upload a small file (< 100MB) to S3
+    """
+    if key is None:
+        key = os.path.basename(file_path)
+        
+    # Detect content type
+    content_type = mimetypes.guess_type(file_path)[0]
+    extra_args = {}
+    if content_type:
+        extra_args['ContentType'] = content_type
+    
+    try:
+        aws_s3_client.upload_file(
+            Filename=file_path,
+            Bucket=bucket_name,
+            Key=key,
+            ExtraArgs=extra_args
+        )
+        return True
+    except ClientError as e:
+        print(f"Error uploading file: {e}")
+        return False
+
+def upload_large_file(aws_s3_client, bucket_name, file_path, key=None, part_size=10*1024*1024):
+    """
+    Upload a large file using multipart upload
+    part_size is in bytes (default 10MB)
+    """
+    if key is None:
+        key = os.path.basename(file_path)
+
+    content_type = mimetypes.guess_type(file_path)[0]
+    
+    file_size = os.path.getsize(file_path)
+    
+    if file_size < 100 * 1024 * 1024:
+        return upload_small_file(aws_s3_client, bucket_name, file_path, key)
+        
+    try:
+        mpu = aws_s3_client.create_multipart_upload(
+            Bucket=bucket_name,
+            Key=key,
+            ContentType=content_type if content_type else 'application/octet-stream'
+        )
+        
+        num_parts = math.ceil(file_size / part_size)
+        
+        parts_lock = Lock()
+        parts = []
+        
+        def upload_part(part_number):
+            offset = (part_number - 1) * part_size
+            
+            bytes_range = min(part_size, file_size - offset)
+            
+            with open(file_path, 'rb') as f:
+                f.seek(offset)
+                part_data = f.read(bytes_range)
+                
+            response = aws_s3_client.upload_part(
+                Bucket=bucket_name,
+                Key=key,
+                PartNumber=part_number,
+                UploadId=mpu['UploadId'],
+                Body=part_data
+            )
+            
+            with parts_lock:
+                parts.append({
+                    'PartNumber': part_number,
+                    'ETag': response['ETag']
+                })
+        
+        with ThreadPoolExecutor(max_workers=min(num_parts, 4)) as executor:
+            executor.map(upload_part, range(1, num_parts + 1))
+        
+        aws_s3_client.complete_multipart_upload(
+            Bucket=bucket_name,
+            Key=key,
+            UploadId=mpu['UploadId'],
+            MultipartUpload={'Parts': sorted(parts, key=lambda x: x['PartNumber'])}
+        )
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error in multipart upload: {e}")
+
+        if 'mpu' in locals():
+            aws_s3_client.abort_multipart_upload(
+                Bucket=bucket_name,
+                Key=key,
+                UploadId=mpu['UploadId']
+            )
+        return False
+
+def set_lifecycle_policy(aws_s3_client, bucket_name, prefix="", days=120):
+    """
+    Set a lifecycle policy to delete objects after specified days
+    """
+    try:
+        lifecycle_config = {
+            'Rules': [
+                {
+                    'ID': f'Delete after {days} days',
+                    'Status': 'Enabled',
+                    'Prefix': prefix,
+                    'Expiration': {'Days': days}
+                }
+            ]
+        }
+        
+        aws_s3_client.put_bucket_lifecycle_configuration(
+            Bucket=bucket_name,
+            LifecycleConfiguration=lifecycle_config
+        )
+        return True
+    except ClientError as e:
+        print(f"Error setting lifecycle policy: {e}")
+        return False
+
+def validate_mime_type(file_path, allowed_types=None):
+    """
+    Validate if file's MIME type is in allowed types
+    """
+    if allowed_types is None:
+        allowed_types = [
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'application/pdf',
+            'text/plain',
+            'application/json'
+        ]
+    
+    mime_type = mimetypes.guess_type(file_path)[0]
+    if mime_type is None:
+        return False
+        
+    return mime_type in allowed_types
