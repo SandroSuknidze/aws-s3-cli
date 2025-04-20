@@ -287,3 +287,15 @@ def validate_mime_type(file_path, allowed_types=None):
         return False
         
     return mime_type in allowed_types
+
+def delete_file(aws_s3_client, bucket_name, file_key):
+    """
+    Delete a file from S3
+    """
+    try:
+        response = aws_s3_client.delete_object(Bucket=bucket_name, Key=file_key)
+        status_code = response["ResponseMetadata"]["HTTPStatusCode"]
+        return str(status_code).startswith("2")
+    except ClientError as e:
+        print(f"Error deleting file: {e}")
+        return False
