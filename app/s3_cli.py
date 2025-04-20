@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from collections import defaultdict
 
 import boto3
@@ -412,3 +414,20 @@ def upload_to_folder(bucket_name, file_path, aws_s3_client):
         typer.echo(f"Successfully uploaded {file_path} to {bucket_name}/{key}")
     else:
         typer.echo("Upload failed")
+
+def delete_old_files(bucket_name, aws_s3_client, file_name):
+    versions = list_file_versions(aws_s3_client, bucket_name, file_name)
+    if versions:
+        six_months_ago = datetime.now(versions[0]['LastModified'].tzinfo) - timedelta(days=180)
+        for version in versions:
+            if version['LastModified'] < six_months_ago:
+                try:
+                    aws_s3_client.delete_object(
+                        Bucket=bucket_name,
+                        Key=file_name,
+                        VersionId=version['VersionId']
+                    )
+                    typer.echo(f"Deleted version {version['VersionId']} of {file_name} from {bucket_name}")
+                except ClientError as e:
+                    typer.echo(f"Error deleting version {version['VersionId']}: {e}")
+

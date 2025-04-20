@@ -7,7 +7,7 @@ from app.s3_cli import (
     set_object_access_policy, create_bucket_policy,
     read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
     set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version,
-    collecting_objects, upload_to_folder
+    collecting_objects, upload_to_folder, delete_old_files
 )
 
 app = typer.Typer()
@@ -204,6 +204,13 @@ def upload_to_folder_cmd(
         typer.echo(f"Successfully uploaded {file_path} to {bucket_name}")
     else:
         typer.echo("Upload failed")
+
+
+@app.command()
+def delete_old_files_cmd(bucket_name: str, file_name: str):
+    client = init_client()
+
+    delete_old_files(bucket_name, client, file_name)
 
 
 if __name__ == "__main__":
