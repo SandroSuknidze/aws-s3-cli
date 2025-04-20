@@ -6,7 +6,8 @@ from app.s3_cli import (
     bucket_exists, download_file_and_upload_to_s3,
     set_object_access_policy, create_bucket_policy,
     read_bucket_policy, generate_public_read_policy, validate_mime_type, upload_large_file, upload_small_file,
-    set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version
+    set_lifecycle_policy, delete_file, get_bucket_versioning, list_file_versions, restore_file_version,
+    collecting_objects
 )
 
 app = typer.Typer()
@@ -127,7 +128,7 @@ def set_lifecycle_cmd(bucket_name: str, prefix: str = "", days: int = 120):
 
 @app.command()
 def delete_file_cmd(bucket_name: str, file_key: str,
-                   delete: bool = typer.Option(False, "--del", help="Flag to confirm deletion")):
+                    delete: bool = typer.Option(False, "--del", help="Flag to confirm deletion")):
     if not delete:
         typer.echo("Please provide --del flag to confirm deletion")
         raise typer.Exit(1)
@@ -139,11 +140,13 @@ def delete_file_cmd(bucket_name: str, file_key: str,
         typer.echo(f"Failed to delete {file_key}")
         raise typer.Exit(1)
 
+
 @app.command()
 def get_bucket_versioning_cmd(bucket_name: str):
     client = init_client()
     is_enabled = get_bucket_versioning(client, bucket_name)
     typer.echo(f"Versioning for bucket {bucket_name}: {'Enabled' if is_enabled else 'Disabled'}")
+
 
 @app.command()
 def list_file_versions_cmd(bucket_name: str, file_name: str):
@@ -169,6 +172,23 @@ def restore_version_cmd(bucket_name: str, file_name: str, version_id: str):
         typer.echo(f"Successfully restored version {version_id} of {file_name}")
     else:
         typer.echo("Failed to restore version")
+
+
+@app.command()
+def collecting_objects_cmd(bucket_name: str,
+                           collect: bool = typer.Option(False, "--col", help="Flag to confirm collection")):
+    if not collect:
+        typer.echo("Please provide --col flag to confirm collection")
+        raise typer.Exit(1)
+
+    client = init_client()
+    result = collecting_objects(bucket_name, client)
+
+    if result:
+        typer.echo(f"Successfully collected objects from {bucket_name}")
+    else:
+        typer.echo(f"Failed to collect objects from {bucket_name}")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
