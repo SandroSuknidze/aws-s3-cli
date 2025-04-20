@@ -4,8 +4,6 @@ from os import getenv
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 import json
-from hashlib import md5
-from time import localtime
 
 load_dotenv()
 
@@ -18,8 +16,6 @@ def init_client():
             aws_secret_access_key=getenv("aws_secret_access_key"),
             aws_session_token=getenv("aws_session_token"),
             region_name=getenv("aws_region_name"))
-        # Check if credentials are correct
-        # client.list_buckets()
 
         return client
     except ClientError as e:
@@ -57,16 +53,14 @@ def delete_bucket(aws_s3_client, bucket_name):
         print(e)
         return False
     status_code = response["ResponseMetadata"]["HTTPStatusCode"]
-    if status_code == 200:
-        return True
-    return False
+    return str(status_code).startswith("2")
 
 
 def bucket_exists(aws_s3_client, bucket_name):
     try:
         response = aws_s3_client.head_bucket(Bucket=bucket_name)
     except ClientError as e:
-        print(e)
+        # print(e)
         return False
     status_code = response["ResponseMetadata"]["HTTPStatusCode"]
     if status_code == 200:
@@ -144,36 +138,3 @@ def read_bucket_policy(aws_s3_client, bucket_name):
     except ClientError as e:
         print(e)
         return False
-
-
-if __name__ == "__main__":
-    s3_client = init_client()
-    print(s3_client)
-
-    s3_name = f'btu-bucket-{md5(str(localtime()).encode("utf-8")).hexdigest()}'
-    print(s3_name)
-    # print(f'created bucket status: { create_bucket(s3_client, s3_name)}')
-
-    # create_bucket_policy(s3_client, s3_name)
-    # read_bucket_policy(s3_client, s3_name)
-
-    # Example usage
-    # print(
-    #     download_file_and_upload_to_s3(
-    #         s3_client,
-    #         s3_name,
-    #         'https://www.coreldraw.com/static/cdgs/images/free-trials/img-ui-cdgsx.jpg',
-    #         f'image_file_{md5(str(localtime()).encode("utf-8")).hexdigest()}.jpg',
-    #         keep_local=True)
-    # )
-    print(delete_bucket(s3_client, s3_name))
-
-    # buckets = list_buckets(s3_client)
-    # if buckets:
-    #     for bucket in buckets['Buckets']:
-    #         print(f'  {bucket["Name"]}')
-
-    # print(f'deleted bucket status: { delete_bucket(s3_client, "btudevopsteam1")}')
-    # print(f'Bucket exists: { bucket_exists(s3_client, "automatinawsbttu-commandline")}')
-
-    # print(f"set read status: {set_object_access_policy(s3_client, 'new-bucket-btu', 'image_file_78bc222b20d1ff69cdf1290a7537d5fd.jpg')}")
